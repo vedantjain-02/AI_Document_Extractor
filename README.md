@@ -175,7 +175,7 @@ Example:
 ### 1. Clone the repository
 
 ```bash
-git clone <your-github-repository-url>
+git clone https://github.com/vedantjain-02/AI_Document_Extractor.git
 cd AI_Document_Extractor
 ```
 
