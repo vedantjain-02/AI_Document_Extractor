@@ -1,21 +1,24 @@
 import json
 import base64
+from io import BytesIO
+
 import requests
-import html
 import streamlit as st
 
+from PIL import Image, ImageDraw
+
 
 # =========================================================
-# CONFIGURATION
+# CONFIG
 # =========================================================
 
-API_URL = "http://127.0.0.1:8000/upload"
+BACKEND_URL = "http://127.0.0.1:8000"
 
 st.set_page_config(
     page_title="AI Document Extractor",
     page_icon="📄",
     layout="wide",
-    initial_sidebar_state="collapsed",
+    initial_sidebar_state="collapsed"
 )
 
 
@@ -23,288 +26,265 @@ st.set_page_config(
 # SESSION STATE
 # =========================================================
 
-if "result" not in st.session_state:
-    st.session_state.result = None
+DEFAULT_STATE = {
+    "result": None,
+    "uploaded_file_data": None,
+    "uploaded_file_name": None,
+    "uploaded_file_type": None,
+    "chat_history": [],
+    "bounding_boxes": [],
+}
 
-if "uploaded_file_data" not in st.session_state:
-    st.session_state.uploaded_file_data = None
-
-if "uploaded_file_name" not in st.session_state:
-    st.session_state.uploaded_file_name = None
-
-if "uploaded_file_type" not in st.session_state:
-    st.session_state.uploaded_file_type = None
+for key, value in DEFAULT_STATE.items():
+    if key not in st.session_state:
+        st.session_state[key] = value
 
 
 # =========================================================
-# CUSTOM CSS
+# DARK THEME CSS
 # =========================================================
 
 st.markdown(
     """
-<style>
+    <style>
 
-#MainMenu {
-    visibility: hidden;
-}
+    /* =====================================================
+       MAIN APP
+    ===================================================== */
 
-footer {
-    visibility: hidden;
-}
-
-header {
-    background: transparent !important;
-}
-
-.stApp {
-    background: #0b0d10;
-}
-
-.block-container {
-    max-width: 1450px;
-    padding-top: 2rem;
-    padding-bottom: 3rem;
-}
-
-/* ================= HEADER ================= */
-
-.brand-row {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-}
-
-.brand-icon {
-    width: 46px;
-    height: 46px;
-    border-radius: 12px;
-    background: #f4f5f7;
-    color: #0b0d10;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 23px;
-    font-weight: 800;
-}
-
-.brand-title {
-    color: #f5f7fa;
-    font-size: 30px;
-    font-weight: 750;
-    letter-spacing: -0.8px;
-}
-
-.subtitle {
-    color: #858b95;
-    font-size: 14px;
-    margin-top: 7px;
-    margin-left: 60px;
-}
-
-.online {
-    text-align: right;
-    color: #aab0b8;
-    font-size: 13px;
-    margin-top: 12px;
-}
-
-.online-dot {
-    color: #4fd184;
-    font-size: 15px;
-}
-
-.top-divider {
-    height: 1px;
-    background: #22262d;
-    margin: 27px 0 30px 0;
-}
-
-/* ================= UPLOAD ================= */
-
-.upload-heading {
-    color: #f1f3f5;
-    font-size: 19px;
-    font-weight: 650;
-}
-
-.upload-description {
-    color: #777e88;
-    font-size: 13px;
-    margin-top: 5px;
-    margin-bottom: 16px;
-}
-
-/* ================= PANELS ================= */
-
-.panel {
-    background: #111419;
-    border: 1px solid #252a32;
-    border-radius: 16px;
-    padding: 20px;
-}
-
-.panel-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 18px;
-}
-
-.panel-title {
-    color: #f2f4f6;
-    font-size: 17px;
-    font-weight: 650;
-}
-
-.panel-label {
-    color: #68707a;
-    font-size: 10px;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-}
-
-/* ================= DOCUMENT TYPE ================= */
-
-.document-type {
-    background: #171b21;
-    border: 1px solid #2a3038;
-    border-radius: 12px;
-    padding: 15px 17px;
-    margin-bottom: 15px;
-}
-
-.document-type-value {
-    color: #f4f6f8;
-    font-size: 19px;
-    font-weight: 650;
-    margin-top: 5px;
-}
-
-/* ================= FIELD CARD ================= */
-
-.field-card {
-    background: #171b21;
-    border: 1px solid #252b33;
-    border-radius: 11px;
-    padding: 13px 15px;
-    margin-bottom: 10px;
-    min-height: 72px;
-}
-
-.field-label {
-    color: #707782;
-    font-size: 10px;
-    letter-spacing: 0.8px;
-    text-transform: uppercase;
-    margin-bottom: 6px;
-}
-
-.field-value {
-    color: #e8ebef;
-    font-size: 14px;
-    font-weight: 550;
-    word-break: break-word;
-}
-
-/* ================= PIPELINE ================= */
-
-.pipeline {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: #111419;
-    border: 1px solid #252a32;
-    border-radius: 14px;
-    padding: 18px;
-    margin-bottom: 22px;
-}
-
-.pipeline-step {
-    display: flex;
-    align-items: center;
-    gap: 9px;
-}
-
-.pipeline-icon {
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    background: #14261c;
-    border: 1px solid #2b6945;
-    color: #67d996;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 13px;
-    font-weight: 700;
-}
-
-.pipeline-text {
-    color: #dce1e6;
-    font-size: 12px;
-    font-weight: 550;
-}
-
-.pipeline-line {
-    width: 55px;
-    height: 1px;
-    background: #303640;
-    margin: 0 14px;
-}
-
-@media (max-width: 900px) {
-
-    .pipeline {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 12px;
+    .stApp {
+        background-color: #0f1117;
+        color: #f8fafc;
     }
 
-    .pipeline-line {
-        width: 1px;
-        height: 20px;
-        margin: 0 0 0 13px;
+    .block-container {
+        max-width: 1400px;
+        padding-top: 2rem;
+        padding-bottom: 5rem;
     }
 
-}
 
-/* ================= SUCCESS ================= */
+    /* =====================================================
+       HEADER
+    ===================================================== */
 
-.success-box {
-    background: #0f1914;
-    border: 1px solid #244a35;
-    color: #70d99b;
-    padding: 11px 15px;
-    border-radius: 10px;
-    font-size: 13px;
-    margin-bottom: 20px;
-}
+    .main-title {
+        font-size: 42px;
+        font-weight: 800;
+        color: #f8fafc;
+        margin-bottom: 5px;
+    }
 
-/* ================= FILE INFO ================= */
+    .main-subtitle {
+        font-size: 17px;
+        color: #94a3b8;
+        margin-bottom: 30px;
+    }
 
-.file-info {
-    color: #777f89;
-    font-size: 12px;
-    margin-top: 8px;
-}
 
-.file-name {
-    color: #d8dde3;
-    font-weight: 600;
-}
+    /* =====================================================
+       UPLOAD
+    ===================================================== */
 
-/* ================= FOOTER ================= */
+    .upload-title {
+        font-size: 22px;
+        font-weight: 700;
+        color: #f8fafc;
+    }
 
-.footer {
-    text-align: center;
-    color: #505761;
-    font-size: 11px;
-    margin-top: 35px;
-}
+    .upload-subtitle {
+        font-size: 15px;
+        color: #94a3b8;
+        margin-bottom: 12px;
+    }
 
-</style>
-""",
-    unsafe_allow_html=True,
+
+    /* =====================================================
+       STREAMLIT TEXT
+    ===================================================== */
+
+    p,
+    label,
+    .stMarkdown,
+    .stCaption {
+        color: #e2e8f0;
+    }
+
+
+    /* =====================================================
+       FILE UPLOADER
+    ===================================================== */
+
+    [data-testid="stFileUploader"] {
+        background-color: #1a1d25;
+        border: 1px solid #2d3340;
+        border-radius: 12px;
+    }
+
+    [data-testid="stFileUploaderDropzone"] {
+        background-color: #1a1d25;
+        border: 1px dashed #3f4654;
+    }
+
+
+    /* =====================================================
+       BUTTONS
+    ===================================================== */
+
+    .stButton > button {
+        border-radius: 10px;
+        font-weight: 600;
+    }
+
+
+    /* =====================================================
+       CONTAINERS
+    ===================================================== */
+
+    [data-testid="stVerticalBlockBorderWrapper"] {
+        background-color: #171a21;
+        border: 1px solid #2d3340;
+        border-radius: 16px;
+    }
+
+
+    /* =====================================================
+       HEADINGS
+    ===================================================== */
+
+    h1,
+    h2,
+    h3,
+    h4 {
+        color: #f8fafc !important;
+    }
+
+
+    /* =====================================================
+       INFO / SUCCESS
+    ===================================================== */
+
+    [data-testid="stAlert"] {
+        border-radius: 10px;
+    }
+
+
+    /* =====================================================
+       TEXT AREA
+    ===================================================== */
+
+    textarea {
+        background-color: #111318 !important;
+        color: #e2e8f0 !important;
+        border: 1px solid #303642 !important;
+    }
+
+
+    /* =====================================================
+       JSON
+    ===================================================== */
+
+    [data-testid="stJson"] {
+        background-color: #111318;
+        border-radius: 10px;
+    }
+
+
+    /* =====================================================
+       DIVIDER
+    ===================================================== */
+
+    hr {
+        border-color: #2d3340;
+    }
+
+
+    /* =====================================================
+       FLOATING CHAT BUTTON
+    ===================================================== */
+
+    div[data-testid="stPopover"] {
+        position: fixed !important;
+
+        right: 24px !important;
+        bottom: 24px !important;
+
+        left: auto !important;
+        top: auto !important;
+
+        width: 58px !important;
+        min-width: 58px !important;
+        max-width: 58px !important;
+
+        height: 58px !important;
+        min-height: 58px !important;
+
+        z-index: 999999 !important;
+
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+
+
+    div[data-testid="stPopover"] > button {
+        width: 58px !important;
+        height: 58px !important;
+
+        border-radius: 50% !important;
+
+        padding: 0 !important;
+
+        font-size: 24px !important;
+    }
+
+
+    /* =====================================================
+       CHAT POPUP
+    ===================================================== */
+
+    div[data-testid="stPopoverBody"] {
+        background-color: #171a21 !important;
+        border: 1px solid #303642 !important;
+    }
+
+
+    /* =====================================================
+       CHAT INPUT
+    ===================================================== */
+
+    div[data-baseweb="input"] {
+        background-color: #111318 !important;
+    }
+
+    div[data-baseweb="input"] input {
+        color: #f8fafc !important;
+    }
+
+
+    /* =====================================================
+       IMAGE
+    ===================================================== */
+
+    img {
+        border-radius: 10px;
+    }
+
+
+    /* =====================================================
+       FOOTER
+    ===================================================== */
+
+    .footer-text {
+        text-align: center;
+        color: #64748b;
+        font-size: 13px;
+        padding-top: 25px;
+        padding-bottom: 15px;
+    }
+
+    </style>
+    """,
+    unsafe_allow_html=True
 )
 
 
@@ -312,41 +292,16 @@ header {
 # HEADER
 # =========================================================
 
-header_left, header_right = st.columns([4, 1])
-
-with header_left:
-
-    st.markdown(
-        """
-<div class="brand-row">
-    <div class="brand-icon">◈</div>
-    <div class="brand-title">AI Document Extractor</div>
-</div>
-
-<div class="subtitle">
-    Intelligent document processing & structured information extraction
-</div>
-""",
-        unsafe_allow_html=True,
-    )
-
-
-with header_right:
-
-    st.markdown(
-        """
-<div class="online">
-    <span class="online-dot">●</span>
-    System Online
-</div>
-""",
-        unsafe_allow_html=True,
-    )
-
+st.markdown(
+    '<div class="main-title">📄 AI Document Extractor</div>',
+    unsafe_allow_html=True
+)
 
 st.markdown(
-    '<div class="top-divider"></div>',
-    unsafe_allow_html=True,
+    '<div class="main-subtitle">'
+    'Upload a document and let AI extract structured information automatically.'
+    '</div>',
+    unsafe_allow_html=True
 )
 
 
@@ -355,514 +310,576 @@ st.markdown(
 # =========================================================
 
 st.markdown(
-    '<div class="upload-heading">Upload Document</div>',
-    unsafe_allow_html=True,
+    '<div class="upload-title">Upload Document</div>',
+    unsafe_allow_html=True
 )
 
 st.markdown(
-    """
-<div class="upload-description">
-    Upload a document image or PDF. The system will automatically
-    detect the document type and extract relevant information.
-</div>
-""",
-    unsafe_allow_html=True,
+    '<div class="upload-subtitle">'
+    'Supported documents can be analyzed using OCR and AI.'
+    '</div>',
+    unsafe_allow_html=True
 )
 
 
 uploaded_file = st.file_uploader(
-    "Choose document",
-    type=["jpg", "jpeg", "png", "pdf"],
-    label_visibility="collapsed",
+    "Choose a document",
+    type=[
+        "png",
+        "jpg",
+        "jpeg",
+        "webp",
+        "pdf"
+    ],
+    label_visibility="collapsed"
 )
 
 
 # =========================================================
-# NEW FILE SELECTED
+# HANDLE FILE
 # =========================================================
 
 if uploaded_file is not None:
 
-    # Detect if user selected a different file
-    current_name = uploaded_file.name
+    new_file_data = uploaded_file.getvalue()
+    new_file_name = uploaded_file.name
+    new_file_type = uploaded_file.type
 
     if (
-        st.session_state.uploaded_file_name != current_name
+        st.session_state.uploaded_file_name != new_file_name
+        or st.session_state.uploaded_file_data != new_file_data
     ):
 
         st.session_state.result = None
+        st.session_state.chat_history = []
+        st.session_state.bounding_boxes = []
 
-        st.session_state.uploaded_file_data = (
-            uploaded_file.getvalue()
-        )
-
-        st.session_state.uploaded_file_name = (
-            uploaded_file.name
-        )
-
-        st.session_state.uploaded_file_type = (
-            uploaded_file.type
-        )
+        st.session_state.uploaded_file_data = new_file_data
+        st.session_state.uploaded_file_name = new_file_name
+        st.session_state.uploaded_file_type = new_file_type
 
 
-    file_size_kb = uploaded_file.size / 1024
+# =========================================================
+# ANALYZE BUTTON
+# =========================================================
 
-    st.markdown(
-        f"""
-<div class="file-info">
-    Selected:
-    <span class="file-name">{html.escape(uploaded_file.name)}</span>
-    &nbsp; • &nbsp;
-    {file_size_kb:.1f} KB
-</div>
-""",
-        unsafe_allow_html=True,
-    )
-
-
-    st.write("")
-
-
-    # =====================================================
-    # ANALYZE BUTTON
-    # =====================================================
+if uploaded_file is not None:
 
     if st.button(
-        "Analyze Document",
+        "🔍 Analyze Document",
         type="primary",
-        use_container_width=True,
+        use_container_width=True
     ):
 
         with st.spinner(
-            "Analyzing document with AI..."
+            "AI is analyzing your document..."
         ):
-
-            files = {
-                "file": (
-                    uploaded_file.name,
-                    uploaded_file.getvalue(),
-                    uploaded_file.type,
-                )
-            }
 
             try:
 
-                response = requests.post(
-                    API_URL,
-                    files=files,
-                    timeout=180,
-                )
+                files = {
+                    "file": (
+                        uploaded_file.name,
+                        uploaded_file.getvalue(),
+                        uploaded_file.type
+                    )
+                }
 
+                response = requests.post(
+                    f"{BACKEND_URL}/upload",
+                    files=files,
+                    timeout=180
+                )
 
                 if response.status_code == 200:
 
-                    st.session_state.result = (
-                        response.json()
+                    st.session_state.result = response.json()
+
+                    st.session_state.chat_history = []
+
+                    st.session_state.bounding_boxes = []
+
+                    st.success(
+                        "Document analyzed successfully! ✅"
                     )
 
                     st.rerun()
 
-
                 else:
 
                     st.error(
-                        f"Backend Error: {response.status_code}"
+                        f"Backend error: {response.text}"
                     )
-
-                    try:
-
-                        st.json(
-                            response.json()
-                        )
-
-                    except Exception:
-
-                        st.write(
-                            response.text
-                        )
-
-
-            except requests.exceptions.Timeout:
-
-                st.error(
-                    "The document took too long to process. "
-                    "Please try again."
-                )
-
 
             except requests.exceptions.ConnectionError:
 
                 st.error(
-                    "Cannot connect to FastAPI backend. "
-                    "Make sure the backend server is running."
+                    "❌ Could not connect to backend. "
+                    "Make sure FastAPI is running."
                 )
 
+            except requests.exceptions.Timeout:
+
+                st.error(
+                    "❌ Request timed out."
+                )
 
             except Exception as e:
 
                 st.error(
-                    f"Something went wrong: {str(e)}"
+                    f"❌ Error: {str(e)}"
                 )
 
 
 # =========================================================
-# RESULT SECTION
+# RESULT
 # =========================================================
 
-if st.session_state.result is not None:
+result = st.session_state.result
 
-    result = st.session_state.result
 
-    file_data = st.session_state.uploaded_file_data
-    file_name = st.session_state.uploaded_file_name
-    file_type = st.session_state.uploaded_file_type
-
+if result is not None:
 
     # =====================================================
-    # SUCCESS
+    # PROCESSING PIPELINE
     # =====================================================
 
-    st.markdown(
-        """
-        <div class="success-box">
-            ✓ Document processed successfully
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    with st.container(border=True):
 
-    # =====================================================
-    # AI PROCESSING PIPELINE
-    # =====================================================
+        st.subheader(
+            "⚙️ AI Processing Pipeline"
+        )
 
-    st.markdown(
-        '<div class="pipeline">'
-        '<div class="pipeline-step">'
-        '<div class="pipeline-icon">✓</div>'
-        '<div class="pipeline-text">OCR</div>'
-        '</div>'
-        '<div class="pipeline-line"></div>'
-        '<div class="pipeline-step">'
-        '<div class="pipeline-icon">✓</div>'
-        '<div class="pipeline-text">Document Detection</div>'
-        '</div>'
-        '<div class="pipeline-line"></div>'
-        '<div class="pipeline-step">'
-        '<div class="pipeline-icon">✓</div>'
-        '<div class="pipeline-text">AI Extraction</div>'
-        '</div>'
-        '<div class="pipeline-line"></div>'
-        '<div class="pipeline-step">'
-        '<div class="pipeline-icon">✓</div>'
-        '<div class="pipeline-text">Structured Result</div>'
-        '</div>'
-        '</div>',
-        unsafe_allow_html=True
-    )
+        pipeline_columns = st.columns(9)
+
+        with pipeline_columns[0]:
+            st.info("📤 Upload")
+
+        with pipeline_columns[1]:
+            st.markdown("### →")
+
+        with pipeline_columns[2]:
+            st.info("🔎 OCR")
+
+        with pipeline_columns[3]:
+            st.markdown("### →")
+
+        with pipeline_columns[4]:
+            st.info("🧠 Detection")
+
+        with pipeline_columns[5]:
+            st.markdown("### →")
+
+        with pipeline_columns[6]:
+            st.info("🤖 Extraction")
+
+        with pipeline_columns[7]:
+            st.markdown("### →")
+
+        with pipeline_columns[8]:
+            st.info("📦 JSON")
+
+
+    st.write("")
 
 
     # =====================================================
     # MAIN COLUMNS
     # =====================================================
 
-    left, right = st.columns(
-        [1, 1],
-        gap="large",
+    left_column, right_column = st.columns(
+        [1.05, 1],
+        gap="large"
     )
 
 
     # =====================================================
-    # LEFT — DOCUMENT PREVIEW
+    # LEFT COLUMN
     # =====================================================
 
-    with left:
+    with left_column:
 
-        st.markdown(
-            """
-<div class="panel">
+        with st.container(border=True):
 
-<div class="panel-header">
+            st.subheader(
+                "📑 Document Preview"
+            )
 
-<div class="panel-title">
-📄 Document Preview
-</div>
+            file_data = (
+                st.session_state.uploaded_file_data
+            )
 
-<div class="panel-label">
-SOURCE
-</div>
-
-</div>
-""",
-            unsafe_allow_html=True,
-        )
-
-
-        if file_data and file_type:
-
-            # IMAGE PREVIEW
-
-            if file_type.startswith("image/"):
-
-                st.image(
-                    file_data,
-                    use_container_width=True,
-                )
-
-
-            # PDF PREVIEW
-
-            elif file_type == "application/pdf":
-
-                base64_pdf = base64.b64encode(
-                    file_data
-                ).decode("utf-8")
-
-                pdf_html = f"""
-<iframe
-    src="data:application/pdf;base64,{base64_pdf}"
-    width="100%"
-    height="650"
-    style="
-        border: 1px solid #252a32;
-        border-radius: 10px;
-    "
->
-</iframe>
-"""
-
-                st.markdown(
-                    pdf_html,
-                    unsafe_allow_html=True,
-                )
-
-
-        st.markdown(
-            "</div>",
-            unsafe_allow_html=True,
-        )
-
-
-    # =====================================================
-    # RIGHT — EXTRACTED INFORMATION
-    # =====================================================
-
-    with right:
-
-        st.markdown(
-            """
-<div class="panel">
-
-<div class="panel-header">
-
-<div class="panel-title">
-📋 Extracted Information
-</div>
-
-<div class="panel-label">
-AI RESULT
-</div>
-
-</div>
-""",
-            unsafe_allow_html=True,
-        )
-
-
-        # =================================================
-        # DOCUMENT TYPE
-        # =================================================
-
-        document_type = result.get(
-            "document_type",
-            "Unknown",
-        )
-
-        safe_document_type = html.escape(
-            str(document_type)
-        )
-
-        st.markdown(
-            f"""
-            <div class="document-type">
-
-            <div class="panel-label">
-            Document Type
-            </div>
-
-            <div class="document-type-value">
-            {safe_document_type}
-            </div>
-
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-
-        # =================================================
-        # EXTRACTED DATA
-        # =================================================
-
-        data = result.get(
-            "data",
-            {},
-        )
-
-
-        if isinstance(data, dict) and data:
-
-            field_col_1, field_col_2 = st.columns(2)
-
-            items = list(data.items())
-
-
-            for index, (key, value) in enumerate(items):
-
-                label = (
-                    str(key)
-                    .replace("_", " ")
-                    .title()
-                )
-
-                safe_label = html.escape(
-                    label
-                )
-
-
-                # VALUE FORMATTING
-
-                if value is None:
-
-                    display_value = "Not available"
-
-                elif isinstance(value, bool):
-
-                    display_value = (
-                        "Yes"
-                        if value
-                        else "No"
-                    )
-
-                elif isinstance(value, (dict, list)):
-
-                    display_value = json.dumps(
-                        value,
-                        ensure_ascii=False
-                    )
-
-                else:
-
-                    display_value = str(value)
-
-
-                safe_value = html.escape(
-                    display_value
-                )
-
-
-                target_column = (
-                    field_col_1
-                    if index % 2 == 0
-                    else field_col_2
-                )
-
-
-                with target_column:
-
-                    st.markdown(
-                        f"""
-<div class="field-card">
-
-<div class="field-label">
-{safe_label}
-</div>
-
-<div class="field-value">
-{safe_value}
-</div>
-
-</div>
-""",
-                        unsafe_allow_html=True,
-                    )
-
-
-        else:
-
-            st.warning(
-                "No structured information was extracted."
+            file_type = (
+                st.session_state.uploaded_file_type
+                or ""
             )
 
 
-        st.markdown(
-            "</div>",
-            unsafe_allow_html=True,
-        )
+            # =============================================
+            # IMAGE PREVIEW
+            # =============================================
+
+            if (
+                file_data
+                and file_type.startswith("image/")
+            ):
+
+                try:
+
+                    image = Image.open(
+                        BytesIO(file_data)
+                    ).convert("RGB")
+
+
+                    draw = ImageDraw.Draw(
+                        image
+                    )
+
+
+                    bounding_boxes = (
+                        st.session_state.get(
+                            "bounding_boxes",
+                            []
+                        )
+                    )
+
+
+                    box_count = 0
+
+
+                    for item in bounding_boxes:
+
+                        if not isinstance(
+                            item,
+                            dict
+                        ):
+                            continue
+
+
+                        box = item.get(
+                            "box"
+                        )
+
+
+                        if not box:
+                            continue
+
+
+                        try:
+
+                            # ---------------------------------
+                            # RECTANGLE
+                            # ---------------------------------
+
+                            if (
+                                len(box) == 4
+                                and all(
+                                    isinstance(
+                                        value,
+                                        (int, float)
+                                    )
+                                    for value in box
+                                )
+                            ):
+
+                                x1, y1, x2, y2 = map(
+                                    int,
+                                    box
+                                )
+
+
+                                draw.rectangle(
+                                    [
+                                        x1,
+                                        y1,
+                                        x2,
+                                        y2
+                                    ],
+                                    outline="#ff3030",
+                                    width=5
+                                )
+
+
+                                box_count += 1
+
+
+                            # ---------------------------------
+                            # POLYGON
+                            # ---------------------------------
+
+                            elif (
+                                len(box) >= 3
+                                and isinstance(
+                                    box[0],
+                                    (list, tuple)
+                                )
+                            ):
+
+                                points = []
+
+                                for point in box:
+
+                                    if (
+                                        isinstance(
+                                            point,
+                                            (list, tuple)
+                                        )
+                                        and len(point) >= 2
+                                    ):
+
+                                        points.append(
+                                            (
+                                                int(point[0]),
+                                                int(point[1])
+                                            )
+                                        )
+
+
+                                if len(points) >= 3:
+
+                                    points.append(
+                                        points[0]
+                                    )
+
+
+                                    draw.line(
+                                        points,
+                                        fill="#ff3030",
+                                        width=5
+                                    )
+
+
+                                    box_count += 1
+
+
+                        except Exception:
+
+                            continue
+
+
+                    # -------------------------------------
+                    # DISPLAY IMAGE
+                    # -------------------------------------
+
+                    st.image(
+                        image,
+                        use_container_width=True
+                    )
+
+
+                    if box_count > 0:
+
+                        st.success(
+                            f"🔴 {box_count} "
+                            f"matching field(s) highlighted"
+                        )
+
+
+                except Exception as e:
+
+                    st.error(
+                        f"Could not display image: {e}"
+                    )
+
+
+            # =============================================
+            # PDF
+            # =============================================
+
+            elif (
+                file_data
+                and file_type == "application/pdf"
+            ):
+
+                encoded_pdf = base64.b64encode(
+                    file_data
+                ).decode("utf-8")
+
+
+                pdf_display = f"""
+                <iframe
+                    src="data:application/pdf;base64,{encoded_pdf}"
+                    width="100%"
+                    height="650"
+                    style="
+                        border:1px solid #303642;
+                        border-radius:12px;
+                        background:#171a21;
+                    ">
+                </iframe>
+                """
+
+
+                st.markdown(
+                    pdf_display,
+                    unsafe_allow_html=True
+                )
+
+
+            else:
+
+                st.info(
+                    "Document preview is not available."
+                )
 
 
     # =====================================================
-    # ACTIONS
+    # RIGHT COLUMN
     # =====================================================
 
-    st.write("")
+    with right_column:
 
-    st.divider()
+        with st.container(border=True):
+
+            st.subheader(
+                "🧠 Extracted Information"
+            )
 
 
-    action_1, action_2, action_3 = st.columns(
-        [2, 2, 1]
-    )
+            document_type = result.get(
+                "document_type",
+                "Unknown"
+            )
+
+
+            st.info(
+                f"📄 Document Type: {document_type}"
+            )
+
+
+            structured_data = result.get(
+                "data",
+                {}
+            )
+
+
+            if isinstance(
+                structured_data,
+                dict
+            ):
+
+                for key, value in structured_data.items():
+
+                    if value is None:
+                        value = "Not found"
+
+
+                    label = (
+                        str(key)
+                        .replace(
+                            "_",
+                            " "
+                        )
+                        .title()
+                    )
+
+
+                    field_col1, field_col2 = st.columns(
+                        [1, 1.5]
+                    )
+
+
+                    with field_col1:
+
+                        st.caption(
+                            label
+                        )
+
+
+                    with field_col2:
+
+                        st.write(
+                            str(value)
+                        )
+
+
+                    st.divider()
+
+
+            else:
+
+                st.write(
+                    structured_data
+                )
 
 
     # =====================================================
     # RAW OCR
     # =====================================================
 
-    with action_1:
+    st.write("")
 
-        with st.expander(
-            "View Raw OCR Text"
+
+    with st.container(border=True):
+
+        st.subheader(
+            "🔎 Raw OCR Text"
+        )
+
+
+        extracted_text = result.get(
+            "extracted_text",
+            []
+        )
+
+
+        if isinstance(
+            extracted_text,
+            list
         ):
 
-            ocr_text = result.get(
-                "extracted_text",
-                []
+            raw_text = "\n".join(
+                str(text)
+                for text in extracted_text
+            )
+
+        else:
+
+            raw_text = str(
+                extracted_text
             )
 
 
-            if ocr_text:
-
-                for text in ocr_text:
-
-                    st.write(
-                        str(text)
-                    )
-
-            else:
-
-                st.info(
-                    "No OCR text available."
-                )
-
-
-    # =====================================================
-    # DOWNLOAD JSON
-    # =====================================================
-
-    with action_2:
-
-        json_data = json.dumps(
-            result,
-            indent=4,
-            ensure_ascii=False,
+        st.text_area(
+            "OCR Text",
+            raw_text,
+            height=220,
+            label_visibility="collapsed"
         )
 
+
+    # =====================================================
+    # STRUCTURED JSON
+    # =====================================================
+
+    st.write("")
+
+
+    with st.container(border=True):
+
+        st.subheader(
+            "📦 Structured JSON"
+        )
+
+
+        st.json(
+            structured_data
+        )
+
+
+        json_data = json.dumps(
+            structured_data,
+            indent=4,
+            ensure_ascii=False
+        )
+
+
         st.download_button(
-            "Download JSON",
+            label="⬇️ Download JSON",
             data=json_data,
-            file_name="extracted_document.json",
+            file_name="extracted_data.json",
             mime="application/json",
-            use_container_width=True,
+            use_container_width=True
         )
 
 
@@ -870,19 +887,201 @@ AI RESULT
     # NEW DOCUMENT
     # =====================================================
 
-    with action_3:
+    st.write("")
 
-        if st.button(
-            "New Document",
-            use_container_width=True,
-        ):
 
-            st.session_state.result = None
-            st.session_state.uploaded_file_data = None
-            st.session_state.uploaded_file_name = None
-            st.session_state.uploaded_file_type = None
+    if st.button(
+        "🔄 Analyze New Document",
+        use_container_width=True
+    ):
 
-            st.rerun()
+        st.session_state.result = None
+
+        st.session_state.uploaded_file_data = None
+
+        st.session_state.uploaded_file_name = None
+
+        st.session_state.uploaded_file_type = None
+
+        st.session_state.chat_history = []
+
+        st.session_state.bounding_boxes = []
+
+        st.rerun()
+
+
+# =========================================================
+# FLOATING CHAT
+# =========================================================
+
+if result is not None:
+
+    with st.popover("💬"):
+
+        st.subheader(
+            "💬 Ask Your Document"
+        )
+
+        st.caption(
+            "Ask questions about the uploaded document."
+        )
+
+
+        # =================================================
+        # CHAT HISTORY
+        # =================================================
+
+        for message in st.session_state.chat_history:
+
+            role = message.get(
+                "role"
+            )
+
+            content = message.get(
+                "content",
+                ""
+            )
+
+
+            if role == "user":
+
+                st.chat_message(
+                    "user"
+                ).write(
+                    content
+                )
+
+            else:
+
+                st.chat_message(
+                    "assistant"
+                ).write(
+                    content
+                )
+
+
+        # =================================================
+        # QUESTION INPUT
+        # =================================================
+
+        question = st.text_input(
+            "Ask a question",
+            placeholder="e.g. What is the date of birth?",
+            key="document_question_input"
+        )
+
+
+        ask_button = st.button(
+            "Ask",
+            use_container_width=True
+        )
+
+
+        # =================================================
+        # ASK QUESTION
+        # =================================================
+
+        if ask_button:
+
+            if not question.strip():
+
+                st.warning(
+                    "Please enter a question."
+                )
+
+            else:
+
+                with st.spinner(
+                    "AI is thinking..."
+                ):
+
+                    try:
+
+                        response = requests.post(
+                            f"{BACKEND_URL}/ask",
+                            params={
+                                "question": question
+                            },
+                            timeout=120
+                        )
+
+
+                        if response.status_code == 200:
+
+                            answer_data = (
+                                response.json()
+                            )
+
+
+                            answer = (
+                                answer_data.get(
+                                    "answer",
+                                    "No answer received."
+                                )
+                            )
+
+
+                            # ---------------------------------
+                            # BOUNDING BOXES
+                            # ---------------------------------
+
+                            st.session_state.bounding_boxes = (
+                                answer_data.get(
+                                    "bounding_boxes",
+                                    []
+                                )
+                            )
+
+
+                            # ---------------------------------
+                            # CHAT HISTORY
+                            # ---------------------------------
+
+                            st.session_state.chat_history.append(
+                                {
+                                    "role": "user",
+                                    "content": question
+                                }
+                            )
+
+
+                            st.session_state.chat_history.append(
+                                {
+                                    "role": "assistant",
+                                    "content": answer
+                                }
+                            )
+
+
+                            st.rerun()
+
+
+                        else:
+
+                            st.error(
+                                f"Backend error: {response.text}"
+                            )
+
+
+                    except requests.exceptions.ConnectionError:
+
+                        st.error(
+                            "❌ Could not connect to backend."
+                        )
+
+
+                    except requests.exceptions.Timeout:
+
+                        st.error(
+                            "❌ AI request timed out."
+                        )
+
+
+                    except Exception as e:
+
+                        st.error(
+                            f"❌ Error: {str(e)}"
+                        )
 
 
 # =========================================================
@@ -890,10 +1089,8 @@ AI RESULT
 # =========================================================
 
 st.markdown(
-    """
-<div class="footer">
-    AI Document Extractor • OCR + Intelligent Information Extraction
-</div>
-""",
-    unsafe_allow_html=True,
+    '<div class="footer-text">'
+    'AI Document Extractor • OCR + AI + Document Q&A'
+    '</div>',
+    unsafe_allow_html=True
 )
