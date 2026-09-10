@@ -1,6 +1,6 @@
 import os
 import re
-
+import time
 from fastapi import FastAPI, UploadFile, File
 from pydantic import BaseModel
 
@@ -337,89 +337,92 @@ def find_matching_boxes(
 # =========================================================
 
 @app.post("/upload")
-async def upload_document(
-    file: UploadFile = File(...)
-):
+async def upload_document(file: UploadFile = File(...)):
 
-    # -----------------------------------------------------
-    # CREATE UPLOAD DIRECTORY
-    # -----------------------------------------------------
+    start_time = time.time()
+
+    print("\n==============================")
+    print("UPLOAD STARTED")
+    print("==============================")
 
     os.makedirs(
         "uploads",
         exist_ok=True
     )
 
-
-    # -----------------------------------------------------
-    # SAVE FILE
-    # -----------------------------------------------------
-
     file_path = os.path.join(
         "uploads",
         file.filename
     )
 
-
     with open(
         file_path,
         "wb"
     ) as buffer:
-
         buffer.write(
             await file.read()
         )
 
+    print(
+        f"FILE SAVED: {time.time() - start_time:.2f}s"
+    )
 
-    # =====================================================
+    # -----------------------------
     # OCR
-    # =====================================================
+    # -----------------------------
 
-    # OCR now returns:
-    #
-    # [
-    #     {
-    #         "text": "...",
-    #         "box": [...]
-    #     }
-    # ]
+    ocr_start = time.time()
+
+    print("OCR STARTED...")
 
     ocr_data = extract_text(
         file_path
     )
 
+    print(
+        f"OCR FINISHED: {time.time() - ocr_start:.2f}s"
+    )
 
-    # =====================================================
-    # EXTRACT ONLY TEXT
-    # =====================================================
+    # -----------------------------
+    # OCR TEXT
+    # -----------------------------
 
     extracted_text = get_text_from_ocr_data(
         ocr_data
     )
 
+    print(
+        f"OCR TEXT PROCESSED: {time.time() - start_time:.2f}s"
+    )
 
-    # =====================================================
-    # DOCUMENT TYPE DETECTION
-    # =====================================================
+    # -----------------------------
+    # DOCUMENT DETECTION
+    # -----------------------------
+
+    detect_start = time.time()
 
     document_type = detect_document_type(
         extracted_text
     )
 
+    print(
+        f"DOCUMENT DETECTION: {time.time() - detect_start:.2f}s"
+    )
 
-    # =====================================================
-    # DOCUMENT DATA EXTRACTION
-    # =====================================================
+    # -----------------------------
+    # EXTRACTION
+    # -----------------------------
+
+    extract_start = time.time()
 
     document_data = extract_document_data(
         document_type,
         extracted_text
     )
 
-
-    # =====================================================
-    # HANDLE GENERIC EXTRACTOR RESPONSE
-    # =====================================================
+    print(
+        f"DATA EXTRACTION: {time.time() - extract_start:.2f}s"
+    )
 
     if (
         document_type == "Unknown"
@@ -428,80 +431,45 @@ async def upload_document(
             dict
         )
     ):
-
         document_type = document_data.get(
             "document_type",
             "Unknown"
         )
 
-
-    # =====================================================
-    # STRUCTURED DATA
-    # =====================================================
-
     if isinstance(
         document_data,
         dict
     ):
-
         structured_data = document_data.get(
             "data",
             document_data
         )
-
     else:
-
         structured_data = document_data
 
+    document_context["document_type"] = document_type
+    document_context["document_data"] = structured_data
+    document_context["extracted_text"] = extracted_text
+    document_context["ocr_data"] = ocr_data
+    document_context["filename"] = file.filename
 
-    # =====================================================
-    # SAVE DOCUMENT CONTEXT
-    # =====================================================
+    total_time = time.time() - start_time
 
-    document_context[
-        "document_type"
-    ] = document_type
+    print(
+        f"TOTAL UPLOAD TIME: {total_time:.2f}s"
+    )
 
-
-    document_context[
-        "document_data"
-    ] = structured_data
-
-
-    document_context[
-        "extracted_text"
-    ] = extracted_text
-
-
-    document_context[
-        "ocr_data"
-    ] = ocr_data
-
-
-    document_context[
-        "filename"
-    ] = file.filename
-
-
-    # =====================================================
-    # RESPONSE
-    # =====================================================
+    print("==============================")
+    print("UPLOAD FINISHED")
+    print("==============================\n")
 
     return {
-
         "filename": file.filename,
-
         "document_type": document_type,
-
         "data": structured_data,
-
         "extracted_text": extracted_text,
-
         "ocr_data": ocr_data
-
     }
-
-
 # =========================================================
 # DOCUMENT QUESTION / AI CHAT
 # =========================================================

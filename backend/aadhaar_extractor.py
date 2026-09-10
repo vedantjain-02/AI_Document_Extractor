@@ -65,16 +65,23 @@ def extract_aadhaar_details(texts):
     # --------------------------------
     # GENDER
     # --------------------------------
+    # Detect gender from OCR text
     for text in texts:
-
         value = text.strip().lower()
 
-        if value in ["male", "पुरुष"]:
-            gender = "Male"
+        # Female first because "female" contains "male"
+        if (
+            re.search(r"\bfemale\b", value)
+            or "महिला" in value
+        ):
+            gender = "Female"
             break
 
-        elif value in ["female", "महिला"]:
-            gender = "Female"
+        if (
+            re.search(r"\bmale\b", value)
+            or "पुरुष" in value
+        ):
+            gender = "Male"
             break
 
     # --------------------------------
