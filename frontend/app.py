@@ -4,7 +4,6 @@ from io import BytesIO
 
 import requests
 import streamlit as st
-
 from PIL import Image, ImageDraw
 
 
@@ -14,11 +13,138 @@ from PIL import Image, ImageDraw
 
 BACKEND_URL = "http://127.0.0.1:8000"
 
+
+# =========================================================
+# PAGE CONFIG
+# =========================================================
+
 st.set_page_config(
     page_title="AI Document Extractor",
     page_icon="📄",
-    layout="wide",
-    initial_sidebar_state="collapsed"
+    layout="wide"
+)
+
+
+# =========================================================
+# DARK THEME
+# =========================================================
+
+st.markdown(
+    """
+    <style>
+
+    .stApp {
+        background-color: #0e1117;
+        color: white;
+    }
+
+    .main-title {
+        font-size: 42px;
+        font-weight: 700;
+        text-align: center;
+        margin-bottom: 5px;
+    }
+
+    .subtitle {
+        text-align: center;
+        color: #9ca3af;
+        font-size: 17px;
+        margin-bottom: 30px;
+    }
+
+    .field-label {
+        color: #9ca3af;
+        font-size: 14px;
+        margin-bottom: 2px;
+    }
+
+    .field-value {
+        color: white;
+        font-size: 17px;
+        font-weight: 600;
+        margin-bottom: 15px;
+    }
+
+    .chat-user {
+        background-color: #1f2937;
+        padding: 10px 14px;
+        border-radius: 10px;
+        margin-bottom: 8px;
+    }
+
+    .chat-ai {
+        background-color: #111827;
+        padding: 10px 14px;
+        border-radius: 10px;
+        margin-bottom: 15px;
+        border: 1px solid #374151;
+    }
+
+    /* ================================================
+    FLOATING CHAT BUTTON
+    ================================================ */
+
+    div[data-testid="stPopover"] {
+        position: fixed !important;
+        right: 24px !important;
+        bottom: 24px !important;
+
+        width: 60px !important;
+        min-width: 60px !important;
+        max-width: 60px !important;
+
+        height: 60px !important;
+
+        margin: 0 !important;
+        padding: 0 !important;
+
+        z-index: 999999 !important;
+    }
+
+
+    /* Chat Button */
+
+    div[data-testid="stPopover"] > button {
+        width: 60px !important;
+        min-width: 60px !important;
+        max-width: 60px !important;
+
+        height: 60px !important;
+        min-height: 60px !important;
+
+        padding: 0 !important;
+        margin: 0 !important;
+
+        border-radius: 50% !important;
+
+        font-size: 25px !important;
+
+        border: 1px solid #374151 !important;
+
+        background: #1f2937 !important;
+
+        box-shadow:
+            0 8px 25px rgba(0, 0, 0, 0.45) !important;
+
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+    }
+
+
+    /* Hover */
+
+    div[data-testid="stPopover"] > button:hover {
+        border-color: #ff3030 !important;
+
+        transform: scale(1.05) !important;
+
+        transition: 0.2s ease !important;
+    }
+
+    </style>
+    """,
+    unsafe_allow_html=True
 )
 
 
@@ -26,266 +152,23 @@ st.set_page_config(
 # SESSION STATE
 # =========================================================
 
-DEFAULT_STATE = {
-    "result": None,
-    "uploaded_file_data": None,
-    "uploaded_file_name": None,
-    "uploaded_file_type": None,
-    "chat_history": [],
-    "bounding_boxes": [],
-}
+if "result" not in st.session_state:
+    st.session_state.result = None
 
-for key, value in DEFAULT_STATE.items():
-    if key not in st.session_state:
-        st.session_state[key] = value
+if "uploaded_file_data" not in st.session_state:
+    st.session_state.uploaded_file_data = None
 
+if "uploaded_file_name" not in st.session_state:
+    st.session_state.uploaded_file_name = None
 
-# =========================================================
-# DARK THEME CSS
-# =========================================================
+if "uploaded_file_type" not in st.session_state:
+    st.session_state.uploaded_file_type = None
 
-st.markdown(
-    """
-    <style>
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
 
-    /* =====================================================
-       MAIN APP
-    ===================================================== */
-
-    .stApp {
-        background-color: #0f1117;
-        color: #f8fafc;
-    }
-
-    .block-container {
-        max-width: 1400px;
-        padding-top: 2rem;
-        padding-bottom: 5rem;
-    }
-
-
-    /* =====================================================
-       HEADER
-    ===================================================== */
-
-    .main-title {
-        font-size: 42px;
-        font-weight: 800;
-        color: #f8fafc;
-        margin-bottom: 5px;
-    }
-
-    .main-subtitle {
-        font-size: 17px;
-        color: #94a3b8;
-        margin-bottom: 30px;
-    }
-
-
-    /* =====================================================
-       UPLOAD
-    ===================================================== */
-
-    .upload-title {
-        font-size: 22px;
-        font-weight: 700;
-        color: #f8fafc;
-    }
-
-    .upload-subtitle {
-        font-size: 15px;
-        color: #94a3b8;
-        margin-bottom: 12px;
-    }
-
-
-    /* =====================================================
-       STREAMLIT TEXT
-    ===================================================== */
-
-    p,
-    label,
-    .stMarkdown,
-    .stCaption {
-        color: #e2e8f0;
-    }
-
-
-    /* =====================================================
-       FILE UPLOADER
-    ===================================================== */
-
-    [data-testid="stFileUploader"] {
-        background-color: #1a1d25;
-        border: 1px solid #2d3340;
-        border-radius: 12px;
-    }
-
-    [data-testid="stFileUploaderDropzone"] {
-        background-color: #1a1d25;
-        border: 1px dashed #3f4654;
-    }
-
-
-    /* =====================================================
-       BUTTONS
-    ===================================================== */
-
-    .stButton > button {
-        border-radius: 10px;
-        font-weight: 600;
-    }
-
-
-    /* =====================================================
-       CONTAINERS
-    ===================================================== */
-
-    [data-testid="stVerticalBlockBorderWrapper"] {
-        background-color: #171a21;
-        border: 1px solid #2d3340;
-        border-radius: 16px;
-    }
-
-
-    /* =====================================================
-       HEADINGS
-    ===================================================== */
-
-    h1,
-    h2,
-    h3,
-    h4 {
-        color: #f8fafc !important;
-    }
-
-
-    /* =====================================================
-       INFO / SUCCESS
-    ===================================================== */
-
-    [data-testid="stAlert"] {
-        border-radius: 10px;
-    }
-
-
-    /* =====================================================
-       TEXT AREA
-    ===================================================== */
-
-    textarea {
-        background-color: #111318 !important;
-        color: #e2e8f0 !important;
-        border: 1px solid #303642 !important;
-    }
-
-
-    /* =====================================================
-       JSON
-    ===================================================== */
-
-    [data-testid="stJson"] {
-        background-color: #111318;
-        border-radius: 10px;
-    }
-
-
-    /* =====================================================
-       DIVIDER
-    ===================================================== */
-
-    hr {
-        border-color: #2d3340;
-    }
-
-
-    /* =====================================================
-       FLOATING CHAT BUTTON
-    ===================================================== */
-
-    div[data-testid="stPopover"] {
-        position: fixed !important;
-
-        right: 24px !important;
-        bottom: 24px !important;
-
-        left: auto !important;
-        top: auto !important;
-
-        width: 58px !important;
-        min-width: 58px !important;
-        max-width: 58px !important;
-
-        height: 58px !important;
-        min-height: 58px !important;
-
-        z-index: 999999 !important;
-
-        margin: 0 !important;
-        padding: 0 !important;
-    }
-
-
-    div[data-testid="stPopover"] > button {
-        width: 58px !important;
-        height: 58px !important;
-
-        border-radius: 50% !important;
-
-        padding: 0 !important;
-
-        font-size: 24px !important;
-    }
-
-
-    /* =====================================================
-       CHAT POPUP
-    ===================================================== */
-
-    div[data-testid="stPopoverBody"] {
-        background-color: #171a21 !important;
-        border: 1px solid #303642 !important;
-    }
-
-
-    /* =====================================================
-       CHAT INPUT
-    ===================================================== */
-
-    div[data-baseweb="input"] {
-        background-color: #111318 !important;
-    }
-
-    div[data-baseweb="input"] input {
-        color: #f8fafc !important;
-    }
-
-
-    /* =====================================================
-       IMAGE
-    ===================================================== */
-
-    img {
-        border-radius: 10px;
-    }
-
-
-    /* =====================================================
-       FOOTER
-    ===================================================== */
-
-    .footer-text {
-        text-align: center;
-        color: #64748b;
-        font-size: 13px;
-        padding-top: 25px;
-        padding-bottom: 15px;
-    }
-
-    </style>
-    """,
-    unsafe_allow_html=True
-)
+if "bounding_boxes" not in st.session_state:
+    st.session_state.bounding_boxes = []
 
 
 # =========================================================
@@ -298,9 +181,7 @@ st.markdown(
 )
 
 st.markdown(
-    '<div class="main-subtitle">'
-    'Upload a document and let AI extract structured information automatically.'
-    '</div>',
+    '<div class="subtitle">Upload your document and extract information using AI</div>',
     unsafe_allow_html=True
 )
 
@@ -309,54 +190,48 @@ st.markdown(
 # UPLOAD SECTION
 # =========================================================
 
-st.markdown(
-    '<div class="upload-title">Upload Document</div>',
-    unsafe_allow_html=True
-)
-
-st.markdown(
-    '<div class="upload-subtitle">'
-    'Supported documents can be analyzed using OCR and AI.'
-    '</div>',
-    unsafe_allow_html=True
-)
-
-
 uploaded_file = st.file_uploader(
-    "Choose a document",
+    "Upload Document",
     type=[
         "png",
         "jpg",
         "jpeg",
         "webp",
         "pdf"
-    ],
-    label_visibility="collapsed"
+    ]
 )
 
 
 # =========================================================
-# HANDLE FILE
+# HANDLE NEW FILE
 # =========================================================
 
 if uploaded_file is not None:
 
-    new_file_data = uploaded_file.getvalue()
-    new_file_name = uploaded_file.name
-    new_file_type = uploaded_file.type
+    current_file_name = uploaded_file.name
 
     if (
-        st.session_state.uploaded_file_name != new_file_name
-        or st.session_state.uploaded_file_data != new_file_data
+        st.session_state.uploaded_file_name
+        != current_file_name
     ):
 
         st.session_state.result = None
+
         st.session_state.chat_history = []
+
         st.session_state.bounding_boxes = []
 
-        st.session_state.uploaded_file_data = new_file_data
-        st.session_state.uploaded_file_name = new_file_name
-        st.session_state.uploaded_file_type = new_file_type
+        st.session_state.uploaded_file_data = (
+            uploaded_file.getvalue()
+        )
+
+        st.session_state.uploaded_file_name = (
+            uploaded_file.name
+        )
+
+        st.session_state.uploaded_file_type = (
+            uploaded_file.type
+        )
 
 
 # =========================================================
@@ -367,12 +242,11 @@ if uploaded_file is not None:
 
     if st.button(
         "🔍 Analyze Document",
-        type="primary",
         use_container_width=True
     ):
 
         with st.spinner(
-            "AI is analyzing your document..."
+            "Analyzing document..."
         ):
 
             try:
@@ -388,14 +262,14 @@ if uploaded_file is not None:
                 response = requests.post(
                     f"{BACKEND_URL}/upload",
                     files=files,
-                    timeout=180
+                    timeout=120
                 )
 
                 if response.status_code == 200:
 
-                    st.session_state.result = response.json()
+                    result = response.json()
 
-                    st.session_state.chat_history = []
+                    st.session_state.result = result
 
                     st.session_state.bounding_boxes = []
 
@@ -408,398 +282,449 @@ if uploaded_file is not None:
                 else:
 
                     st.error(
-                        f"Backend error: {response.text}"
+                        f"Backend Error: {response.text}"
                     )
-
-            except requests.exceptions.ConnectionError:
-
-                st.error(
-                    "❌ Could not connect to backend. "
-                    "Make sure FastAPI is running."
-                )
-
-            except requests.exceptions.Timeout:
-
-                st.error(
-                    "❌ Request timed out."
-                )
 
             except Exception as e:
 
                 st.error(
-                    f"❌ Error: {str(e)}"
+                    f"Could not connect to backend: {e}"
                 )
 
 
 # =========================================================
-# RESULT
+# RESULT SECTION
 # =========================================================
 
 result = st.session_state.result
 
 
-if result is not None:
+if result:
 
     # =====================================================
-    # PROCESSING PIPELINE
+    # PIPELINE
     # =====================================================
 
-    with st.container(border=True):
+    st.markdown(
+        "## 🔄 Processing Pipeline"
+    )
 
-        st.subheader(
-            "⚙️ AI Processing Pipeline"
-        )
+    pipeline_columns = st.columns(5)
 
-        pipeline_columns = st.columns(9)
+    pipeline_steps = [
+        "📤 Upload",
+        "🔍 OCR",
+        "🧠 Detection",
+        "📊 Extraction",
+        "🤖 Q&A"
+    ]
 
-        with pipeline_columns[0]:
-            st.info("📤 Upload")
+    for column, step in zip(
+        pipeline_columns,
+        pipeline_steps
+    ):
 
-        with pipeline_columns[1]:
-            st.markdown("### →")
+        with column:
 
-        with pipeline_columns[2]:
-            st.info("🔎 OCR")
-
-        with pipeline_columns[3]:
-            st.markdown("### →")
-
-        with pipeline_columns[4]:
-            st.info("🧠 Detection")
-
-        with pipeline_columns[5]:
-            st.markdown("### →")
-
-        with pipeline_columns[6]:
-            st.info("🤖 Extraction")
-
-        with pipeline_columns[7]:
-            st.markdown("### →")
-
-        with pipeline_columns[8]:
-            st.info("📦 JSON")
-
-
-    st.write("")
+            st.info(step)
 
 
     # =====================================================
-    # MAIN COLUMNS
+    # IMAGE PREVIEW
     # =====================================================
 
-    left_column, right_column = st.columns(
-        [1.05, 1],
-        gap="large"
+    file_data = (
+        st.session_state.uploaded_file_data
+    )
+
+    file_type = (
+        st.session_state.uploaded_file_type
     )
 
 
-    # =====================================================
-    # LEFT COLUMN
-    # =====================================================
+    if (
+        file_data
+        and file_type
+        and file_type.startswith("image/")
+    ):
 
-    with left_column:
+        try:
 
-        with st.container(border=True):
+            # -------------------------------------------------
+            # ORIGINAL IMAGE
+            # -------------------------------------------------
 
-            st.subheader(
-                "📑 Document Preview"
+            original_image = Image.open(
+                BytesIO(file_data)
+            ).convert("RGB")
+
+
+            # =================================================
+            # IMAGE 1
+            # ORIGINAL IMAGE + Q&A BOXES
+            # =================================================
+
+            qa_image = original_image.copy()
+
+            qa_draw = ImageDraw.Draw(
+                qa_image
             )
 
-            file_data = (
-                st.session_state.uploaded_file_data
-            )
 
-            file_type = (
-                st.session_state.uploaded_file_type
-                or ""
-            )
+            # -------------------------------------------------
+            # EXISTING Q&A BOUNDING BOXES
+            # -------------------------------------------------
+
+            for item in st.session_state.bounding_boxes:
+
+                if not isinstance(
+                    item,
+                    dict
+                ):
+                    continue
 
 
-            # =============================================
-            # IMAGE PREVIEW
-            # =============================================
+                box = item.get(
+                    "box"
+                )
 
-            if (
-                file_data
-                and file_type.startswith("image/")
-            ):
+                if not box:
+                    continue
+
 
                 try:
 
-                    image = Image.open(
-                        BytesIO(file_data)
-                    ).convert("RGB")
+                    # -----------------------------------------
+                    # RECTANGLE
+                    # [x1, y1, x2, y2]
+                    # -----------------------------------------
 
-
-                    draw = ImageDraw.Draw(
-                        image
-                    )
-
-
-                    bounding_boxes = (
-                        st.session_state.get(
-                            "bounding_boxes",
-                            []
+                    if (
+                        len(box) == 4
+                        and all(
+                            isinstance(
+                                value,
+                                (int, float)
+                            )
+                            for value in box
                         )
-                    )
+                    ):
 
+                        x1, y1, x2, y2 = map(
+                            int,
+                            box
+                        )
 
-                    box_count = 0
-
-
-                    for item in bounding_boxes:
-
-                        if not isinstance(
-                            item,
-                            dict
-                        ):
-                            continue
-
-
-                        box = item.get(
-                            "box"
+                        qa_draw.rectangle(
+                            [
+                                x1,
+                                y1,
+                                x2,
+                                y2
+                            ],
+                            outline="#ff3030",
+                            width=5
                         )
 
 
-                        if not box:
-                            continue
+                    # -----------------------------------------
+                    # POLYGON
+                    # -----------------------------------------
 
+                    elif (
+                        len(box) >= 3
+                        and isinstance(
+                            box[0],
+                            (list, tuple)
+                        )
+                    ):
 
-                        try:
+                        points = []
 
-                            # ---------------------------------
-                            # RECTANGLE
-                            # ---------------------------------
+                        for point in box:
 
                             if (
-                                len(box) == 4
-                                and all(
-                                    isinstance(
-                                        value,
-                                        (int, float)
-                                    )
-                                    for value in box
-                                )
-                            ):
-
-                                x1, y1, x2, y2 = map(
-                                    int,
-                                    box
-                                )
-
-
-                                draw.rectangle(
-                                    [
-                                        x1,
-                                        y1,
-                                        x2,
-                                        y2
-                                    ],
-                                    outline="#ff3030",
-                                    width=5
-                                )
-
-
-                                box_count += 1
-
-
-                            # ---------------------------------
-                            # POLYGON
-                            # ---------------------------------
-
-                            elif (
-                                len(box) >= 3
-                                and isinstance(
-                                    box[0],
+                                isinstance(
+                                    point,
                                     (list, tuple)
                                 )
+                                and len(point) >= 2
                             ):
 
-                                points = []
-
-                                for point in box:
-
-                                    if (
-                                        isinstance(
-                                            point,
-                                            (list, tuple)
-                                        )
-                                        and len(point) >= 2
-                                    ):
-
-                                        points.append(
-                                            (
-                                                int(point[0]),
-                                                int(point[1])
-                                            )
-                                        )
-
-
-                                if len(points) >= 3:
-
-                                    points.append(
-                                        points[0]
+                                points.append(
+                                    (
+                                        int(point[0]),
+                                        int(point[1])
                                     )
+                                )
 
 
-                                    draw.line(
-                                        points,
-                                        fill="#ff3030",
-                                        width=5
-                                    )
+                        if len(points) >= 3:
+
+                            qa_draw.line(
+                                points + [points[0]],
+                                fill="#ff3030",
+                                width=5
+                            )
 
 
-                                    box_count += 1
+                except Exception:
+
+                    continue
 
 
-                        except Exception:
+            # =================================================
+            # IMAGE 2
+            # DUPLICATE IMAGE + ALL OCR BOXES
+            # =================================================
 
-                            continue
+            ocr_image = original_image.copy()
 
-
-                    # -------------------------------------
-                    # DISPLAY IMAGE
-                    # -------------------------------------
-
-                    st.image(
-                        image,
-                        use_container_width=True
-                    )
+            ocr_draw = ImageDraw.Draw(
+                ocr_image
+            )
 
 
-                    if box_count > 0:
+            # -------------------------------------------------
+            # GET OCR DATA
+            # -------------------------------------------------
 
-                        st.success(
-                            f"🔴 {box_count} "
-                            f"matching field(s) highlighted"
-                        )
+            ocr_data = result.get(
+                "ocr_data",
+                []
+            )
 
-
-                except Exception as e:
-
-                    st.error(
-                        f"Could not display image: {e}"
-                    )
+            ocr_box_count = 0
 
 
-            # =============================================
-            # PDF
-            # =============================================
+            # -------------------------------------------------
+            # DRAW ALL OCR BOXES
+            # -------------------------------------------------
 
-            elif (
-                file_data
-                and file_type == "application/pdf"
-            ):
+            for item in ocr_data:
 
-                encoded_pdf = base64.b64encode(
-                    file_data
-                ).decode("utf-8")
-
-
-                pdf_display = f"""
-                <iframe
-                    src="data:application/pdf;base64,{encoded_pdf}"
-                    width="100%"
-                    height="650"
-                    style="
-                        border:1px solid #303642;
-                        border-radius:12px;
-                        background:#171a21;
-                    ">
-                </iframe>
-                """
+                if not isinstance(
+                    item,
+                    dict
+                ):
+                    continue
 
 
-                st.markdown(
-                    pdf_display,
-                    unsafe_allow_html=True
+                box = item.get(
+                    "box"
                 )
 
+                if not box:
+                    continue
+
+
+                try:
+
+                    # -----------------------------------------
+                    # RECTANGLE
+                    # -----------------------------------------
+
+                    if (
+                        len(box) == 4
+                        and all(
+                            isinstance(
+                                value,
+                                (int, float)
+                            )
+                            for value in box
+                        )
+                    ):
+
+                        x1, y1, x2, y2 = map(
+                            int,
+                            box
+                        )
+
+                        ocr_draw.rectangle(
+                            [
+                                x1,
+                                y1,
+                                x2,
+                                y2
+                            ],
+                            outline="#ff3030",
+                            width=2
+                        )
+
+                        ocr_box_count += 1
+
+
+                    # -----------------------------------------
+                    # POLYGON
+                    # -----------------------------------------
+
+                    elif (
+                        len(box) >= 3
+                        and isinstance(
+                            box[0],
+                            (list, tuple)
+                        )
+                    ):
+
+                        points = []
+
+                        for point in box:
+
+                            if (
+                                isinstance(
+                                    point,
+                                    (list, tuple)
+                                )
+                                and len(point) >= 2
+                            ):
+
+                                points.append(
+                                    (
+                                        int(point[0]),
+                                        int(point[1])
+                                    )
+                                )
+
+
+                        if len(points) >= 3:
+
+                            ocr_draw.line(
+                                points + [points[0]],
+                                fill="#ff3030",
+                                width=2
+                            )
+
+                            ocr_box_count += 1
+
+
+                except Exception:
+
+                    continue
+
+
+            # =================================================
+            # SIDE BY SIDE IMAGES
+            # =================================================
+
+            image_column_1, image_column_2 = st.columns(
+                2,
+                gap="medium"
+            )
+
+
+            # -------------------------------------------------
+            # LEFT: ORIGINAL + Q&A BOX
+            # -------------------------------------------------
+
+            with image_column_1:
+
+                st.markdown(
+                    "### Original Document"
+                )
+
+                st.image(
+                    qa_image,
+                    use_container_width=True
+                )
+
+
+            # -------------------------------------------------
+            # RIGHT: ALL OCR BOXES
+            # -------------------------------------------------
+
+            with image_column_2:
+
+                st.markdown(
+                    "### Text detected from the image"
+                )
+
+                st.image(
+                    ocr_image,
+                    use_container_width=True
+                )
+
+
+            # -------------------------------------------------
+            # OCR COUNT
+            # -------------------------------------------------
+
+            if ocr_box_count > 0:
+
+                st.success(
+                    f"🔴 {ocr_box_count} OCR text region(s) detected"
+                )
 
             else:
 
                 st.info(
-                    "Document preview is not available."
+                    "No OCR bounding boxes were detected."
                 )
 
 
+        except Exception as e:
+
+            st.error(
+                f"Could not display image: {e}"
+            )
+
+
     # =====================================================
-    # RIGHT COLUMN
+    # DOCUMENT INFORMATION
     # =====================================================
 
-    with right_column:
-
-        with st.container(border=True):
-
-            st.subheader(
-                "🧠 Extracted Information"
-            )
+    st.markdown(
+        "## 📋 Extracted Information"
+    )
 
 
-            document_type = result.get(
-                "document_type",
-                "Unknown"
-            )
+    document_type = result.get(
+        "document_type",
+        "Unknown"
+    )
 
 
-            st.info(
-                f"📄 Document Type: {document_type}"
-            )
+    st.markdown(
+        f"**Document Type:** `{document_type}`"
+    )
 
 
-            structured_data = result.get(
-                "data",
-                {}
-            )
+    document_data = result.get(
+        "data",
+        {}
+    )
 
 
-            if isinstance(
-                structured_data,
-                dict
-            ):
+    if isinstance(
+        document_data,
+        dict
+    ):
 
-                for key, value in structured_data.items():
+        columns = st.columns(2)
 
-                    if value is None:
-                        value = "Not found"
+        items = list(
+            document_data.items()
+        )
 
+        for index, (
+            key,
+            value
+        ) in enumerate(items):
 
-                    label = (
-                        str(key)
-                        .replace(
-                            "_",
-                            " "
-                        )
-                        .title()
-                    )
+            with columns[
+                index % 2
+            ]:
 
+                st.markdown(
+                    f"""
+                    <div class="field-label">
+                        {key.replace("_", " ").title()}
+                    </div>
 
-                    field_col1, field_col2 = st.columns(
-                        [1, 1.5]
-                    )
-
-
-                    with field_col1:
-
-                        st.caption(
-                            label
-                        )
-
-
-                    with field_col2:
-
-                        st.write(
-                            str(value)
-                        )
-
-
-                    st.divider()
-
-
-            else:
-
-                st.write(
-                    structured_data
+                    <div class="field-value">
+                        {value if value else "Not Found"}
+                    </div>
+                    """,
+                    unsafe_allow_html=True
                 )
 
 
@@ -807,15 +732,9 @@ if result is not None:
     # RAW OCR
     # =====================================================
 
-    st.write("")
-
-
-    with st.container(border=True):
-
-        st.subheader(
-            "🔎 Raw OCR Text"
-        )
-
+    with st.expander(
+        "Raw OCR Text"
+    ):
 
         extracted_text = result.get(
             "extracted_text",
@@ -828,70 +747,39 @@ if result is not None:
             list
         ):
 
-            raw_text = "\n".join(
-                str(text)
-                for text in extracted_text
+            st.text(
+                "\n".join(
+                    str(text)
+                    for text in extracted_text
+                )
             )
 
         else:
 
-            raw_text = str(
-                extracted_text
+            st.text(
+                str(extracted_text)
             )
-
-
-        st.text_area(
-            "OCR Text",
-            raw_text,
-            height=220,
-            label_visibility="collapsed"
-        )
 
 
     # =====================================================
     # STRUCTURED JSON
     # =====================================================
 
-    st.write("")
-
-
-    with st.container(border=True):
-
-        st.subheader(
-            "📦 Structured JSON"
-        )
-
+    with st.expander(
+        "🧾 Structured JSON"
+    ):
 
         st.json(
-            structured_data
-        )
-
-
-        json_data = json.dumps(
-            structured_data,
-            indent=4,
-            ensure_ascii=False
-        )
-
-
-        st.download_button(
-            label="⬇️ Download JSON",
-            data=json_data,
-            file_name="extracted_data.json",
-            mime="application/json",
-            use_container_width=True
+            document_data
         )
 
 
     # =====================================================
-    # NEW DOCUMENT
+    # NEW DOCUMENT BUTTON
     # =====================================================
-
-    st.write("")
-
 
     if st.button(
-        "🔄 Analyze New Document",
+        "📄 Analyze New Document",
         use_container_width=True
     ):
 
@@ -910,187 +798,171 @@ if result is not None:
         st.rerun()
 
 
-# =========================================================
-# FLOATING CHAT
-# =========================================================
-
-if result is not None:
+    # =====================================================
+    # FLOATING DOCUMENT Q&A
+    # =====================================================
 
     with st.popover("💬"):
 
-        st.subheader(
-            "💬 Ask Your Document"
+        st.markdown(
+            "### 🤖 Document Assistant"
         )
 
         st.caption(
-            "Ask questions about the uploaded document."
+            "Ask anything about your uploaded document"
         )
 
 
-        # =================================================
+        # -------------------------------------------------
         # CHAT HISTORY
-        # =================================================
+        # -------------------------------------------------
 
-        for message in st.session_state.chat_history:
+        for chat in st.session_state.chat_history:
 
-            role = message.get(
-                "role"
-            )
+            if chat["role"] == "user":
 
-            content = message.get(
-                "content",
-                ""
-            )
-
-
-            if role == "user":
-
-                st.chat_message(
-                    "user"
-                ).write(
-                    content
+                st.markdown(
+                    f"""
+                    <div class="chat-user">
+                        <b>You:</b> {chat["content"]}
+                    </div>
+                    """,
+                    unsafe_allow_html=True
                 )
 
             else:
 
-                st.chat_message(
-                    "assistant"
-                ).write(
-                    content
+                st.markdown(
+                    f"""
+                    <div class="chat-ai">
+                        <b>AI:</b> {chat["content"]}
+                    </div>
+                    """,
+                    unsafe_allow_html=True
                 )
 
 
-        # =================================================
+        # -------------------------------------------------
         # QUESTION INPUT
-        # =================================================
+        # -------------------------------------------------
 
         question = st.text_input(
             "Ask a question",
-            placeholder="e.g. What is the date of birth?",
-            key="document_question_input"
+            placeholder="e.g. What is the passport number?",
+            key="document_question"
         )
 
 
-        ask_button = st.button(
-            "Ask",
+        # -------------------------------------------------
+        # SEND BUTTON
+        # -------------------------------------------------
+
+        if st.button(
+            "Send",
             use_container_width=True
-        )
+        ):
+
+            if question.strip():
+
+                user_question = question.strip()
 
 
-        # =================================================
-        # ASK QUESTION
-        # =================================================
+                # -----------------------------------------
+                # SAVE USER QUESTION
+                # -----------------------------------------
 
-        if ask_button:
-
-            if not question.strip():
-
-                st.warning(
-                    "Please enter a question."
+                st.session_state.chat_history.append(
+                    {
+                        "role": "user",
+                        "content": user_question
+                    }
                 )
 
-            else:
 
-                with st.spinner(
-                    "AI is thinking..."
-                ):
+                try:
 
-                    try:
+                    with st.spinner(
+                        "Thinking..."
+                    ):
 
                         response = requests.post(
                             f"{BACKEND_URL}/ask",
                             params={
-                                "question": question
+                                "question": user_question
                             },
                             timeout=120
                         )
 
 
-                        if response.status_code == 200:
+                    if response.status_code == 200:
 
-                            answer_data = (
-                                response.json()
+                        answer_data = response.json()
+
+
+                        answer = answer_data.get(
+                            "answer",
+                            "I couldn't find that information in the document."
+                        )
+
+
+                        # ---------------------------------
+                        # SAVE Q&A BOUNDING BOXES
+                        # ---------------------------------
+
+                        st.session_state.bounding_boxes = (
+                            answer_data.get(
+                                "bounding_boxes",
+                                []
                             )
+                        )
 
 
-                            answer = (
-                                answer_data.get(
-                                    "answer",
-                                    "No answer received."
+                        # ---------------------------------
+                        # SAVE AI ANSWER
+                        # ---------------------------------
+
+                        st.session_state.chat_history.append(
+                            {
+                                "role": "assistant",
+                                "content": answer
+                            }
+                        )
+
+
+                        st.rerun()
+
+
+                    else:
+
+                        st.session_state.chat_history.append(
+                            {
+                                "role": "assistant",
+                                "content": (
+                                    f"Backend Error: "
+                                    f"{response.text}"
                                 )
-                            )
-
-
-                            # ---------------------------------
-                            # BOUNDING BOXES
-                            # ---------------------------------
-
-                            st.session_state.bounding_boxes = (
-                                answer_data.get(
-                                    "bounding_boxes",
-                                    []
-                                )
-                            )
-
-
-                            # ---------------------------------
-                            # CHAT HISTORY
-                            # ---------------------------------
-
-                            st.session_state.chat_history.append(
-                                {
-                                    "role": "user",
-                                    "content": question
-                                }
-                            )
-
-
-                            st.session_state.chat_history.append(
-                                {
-                                    "role": "assistant",
-                                    "content": answer
-                                }
-                            )
-
-
-                            st.rerun()
-
-
-                        else:
-
-                            st.error(
-                                f"Backend error: {response.text}"
-                            )
-
-
-                    except requests.exceptions.ConnectionError:
-
-                        st.error(
-                            "❌ Could not connect to backend."
+                            }
                         )
 
-
-                    except requests.exceptions.Timeout:
-
-                        st.error(
-                            "❌ AI request timed out."
-                        )
+                        st.rerun()
 
 
-                    except Exception as e:
+                except Exception as e:
 
-                        st.error(
-                            f"❌ Error: {str(e)}"
-                        )
+                    st.session_state.chat_history.append(
+                        {
+                            "role": "assistant",
+                            "content": (
+                                f"Could not connect to backend: {e}"
+                            )
+                        }
+                    )
+
+                    st.rerun()
 
 
-# =========================================================
-# FOOTER
-# =========================================================
+            else:
 
-st.markdown(
-    '<div class="footer-text">'
-    'AI Document Extractor • OCR + AI + Document Q&A'
-    '</div>',
-    unsafe_allow_html=True
-)
+                st.warning(
+                    "Please enter a question."
+                )
